@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarot Poker Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="game-container">
+        <div class="enemy-area">
+            <div>
+                <h2>Enemy</h2>
+                <div>Health: <span id="enemy-health">30</span></div>
+                <div>Damage: <span id="enemy-damage">6</span></div>
+            </div>
+        </div>
+        
+        <div class="player-area">
+            <h2>Your Hand</h2>
+            <div class="deck-container">
+                <div class="deck">
+                    <span id="deck-count">15</span>
+                </div>
+                <span>Deck</span>
+            </div>
+            <div class="cards-container" id="cards-container"></div>
+            
+            <div class="hand-value" id="hand-value"></div>
+            
+            <div class="hand-calculator">
+                <h3>Current Hand Value</h3>
+                <div class="hand-calc-values">
+                    <div><span id="calc-swords">0</span> Swords</div>
+                    <div><span id="calc-wands">0</span> Wands</div>
+                    <div><span id="calc-cups">0</span> Cups</div>
+                    <div><span id="calc-pentacles">0</span> Pentacles</div>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button class="button" id="discard-btn">Discard Selected (<span id="discard-count">2</span> left)</button>
+                <button class="button" id="end-turn-btn">End Turn</button>
+            </div>
+            
+            <div class="stats">
+                <div class="stat">
+                    <div>Health</div>
+                    <div id="player-health">50</div>
+                </div>
+                <div class="stat">
+                    <div>Shield</div>
+                    <div id="player-shield">0</div>
+                </div>
+                <div class="stat">
+                    <div>Pentacles</div>
+                    <div id="player-pentacles">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="select-hand-modal">
+        <div class="modal-content">
+            <h2>Select 5 Cards for Your Hand</h2>
+            <p>You have more than 5 cards. Please select exactly 5 cards to play.</p>
+            <button class="button" id="confirm-hand-btn" disabled>Confirm Hand</button>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>

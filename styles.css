@@ -1,0 +1,199 @@
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    background-color: #1a1a2e;
+    color: #fff;
+}
+
+.game-container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.enemy-area {
+    background: #16213e;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.player-area {
+    background: #0f3460;
+    padding: 20px;
+    border-radius: 10px;
+}
+
+.cards-container {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin: 20px 0;
+}
+
+.card {
+    width: 100px;
+    height: 150px;
+    background: #ffffff;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s;
+    border: 3px solid transparent;
+    color: #000;
+}
+
+.card:hover {
+    transform: translateY(-10px);
+}
+
+.card.selected {
+    border-color: #ffd700;
+    box-shadow: 0 0 15px #ffd700;
+}
+
+.card.discarded {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.suit-swords {
+    color: #ff4444;
+}
+
+.suit-wands {
+    color: #4444ff;
+}
+
+.suit-cups {
+    color: #44cc44;
+}
+
+.suit-pentacles {
+    color: #cc66ff;
+}
+
+.button {
+    padding: 10px 20px;
+    font-size: 16px;
+    margin: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background: #e94560;
+    color: white;
+}
+
+.button:hover {
+    background: #c73651;
+}
+
+.button:disabled {
+    background: #666;
+    cursor: not-allowed;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: #16213e;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+}
+
+.stats {
+    margin-top: 20px;
+    display: flex;
+    justify-content: space-around;
+}
+
+.stat {
+    background: #1a1a2e;
+    padding: 10px;
+    border-radius: 5px;
+    min-width: 100px;
+    text-align: center;
+}
+
+.hand-value {
+    font-size: 24px;
+    text-align: center;
+    margin: 20px 0;
+    color: #ffd700;
+}
+
+.hand-calculator {
+    background: #16213e;
+    padding: 15px;
+    border-radius: 10px;
+    margin: 20px auto;
+    width: fit-content;
+    text-align: center;
+}
+
+.hand-calculator h3 {
+    margin-top: 0;
+    color: #ffd700;
+}
+
+.hand-calc-values {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.hand-calc-values div {
+    background: #1a1a2e;
+    padding: 8px;
+    border-radius: 5px;
+}
+
+.hand-calc-values span {
+    font-weight: bold;
+    font-size: 18px;
+    margin-right: 5px;
+}
+
+.deck-container {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    text-align: center;
+}
+
+.deck {
+    width: 40px;
+    height: 60px;
+    background: #333;
+    border: 2px solid #555;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 5px;
+}
+
+.deck span {
+    color: #fff;
+    font-weight: bold;
+}
