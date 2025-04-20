@@ -1,57 +1,62 @@
 // Game state
-let deck = [];
-let hand = [];
-let selectedCards = new Set();
-let discardCount = 2;
-let player = {
-    health: 50,
-    shield: 0,
-    pentacles: 0
+const gameState = {
+    deck: [],
+    hand: [],
+    selectedCards: new Set(),
+    discardCount: 2,
+    player: {
+        health: 50,
+        shield: 0,
+        pentacles: 0
+    },
+    enemies: [
+        { health: 30, damage: 6 },
+        { health: 35, damage: 8 }
+    ],
+    currentEnemyIndex: 0,
+    selectingFinalHand: false
 };
-
-let enemies = [
-    { health: 30, damage: 6 },
-    { health: 35, damage: 8 }
-];
-let currentEnemyIndex = 0;
-let enemy = enemies[currentEnemyIndex];
-
-let selectingFinalHand = false;
 
 // Card suits and values
 const suits = ['Swords', 'Cups', 'Pentacles', 'Wands'];
 const values = [1, 2, 3, 4, 5];
 
-function initGame() {
-    // Create deck
-    deck = [];
+// Create a new deck
+function createDeck() {
+    const deck = [];
     suits.forEach(suit => {
         values.forEach(value => {
             deck.push({ suit, value });
         });
     });
-    
-    shuffleDeck();
-    hand = [];
-    selectedCards.clear();
-    discardCount = 2;
-    drawCards(5);
-    updateUI();
+    return deck;
+}
+
+// Initialize the game
+function initGame(state) {
+    state.deck = createDeck();
+    shuffleDeck(state);
+    state.hand = [];
+    state.selectedCards.clear();
+    state.discardCount = 2;
+    state.player.shield = 0;
+    drawCards(state, 5);
+    updateUI(state);
 }
 
 // Shuffle the deck
-function shuffleDeck() {
-    for (let i = deck.length - 1; i > 0; i--) {
+function shuffleDeck(state) {
+    for (let i = state.deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
+        [state.deck[i], state.deck[j]] = [state.deck[j], state.deck[i]];
     }
 }
 
 // Draw cards from deck
-function drawCards(count) {
+function drawCards(state, count) {
     for (let i = 0; i < count; i++) {
-        if (deck.length > 0) {
-            hand.push(deck.pop());
+        if (state.deck.length > 0) {
+            state.hand.push(state.deck.pop());
         }
     }
 }
@@ -67,43 +72,43 @@ function createCardElement(card, index) {
         <div style="font-size: 14px;">${card.suit}</div>
     `;
     
-    div.addEventListener('click', () => toggleCardSelection(index));
+    div.addEventListener('click', () => toggleCardSelection(gameState, index));
     
     return div;
 }
 
 // Toggle card selection
-function toggleCardSelection(index) {
-    if (selectingFinalHand && selectedCards.size >= 5 && !selectedCards.has(index)) {
+function toggleCardSelection(state, index) {
+    if (state.selectingFinalHand && state.selectedCards.size >= 5 && !state.selectedCards.has(index)) {
         return; // Don't allow selecting more than 5 cards for final hand
     }
     
-    if (selectedCards.has(index)) {
-        selectedCards.delete(index);
+    if (state.selectedCards.has(index)) {
+        state.selectedCards.delete(index);
     } else {
-        selectedCards.add(index);
+        state.selectedCards.add(index);
     }
     
-    updateUI();
+    updateUI(state);
 }
 
 // Discard selected cards
-function discardSelected() {
-    if (discardCount <= 0 || selectedCards.size === 0) return;
+function discardSelected(state) {
+    if (state.discardCount <= 0 || state.selectedCards.size === 0) return;
     
     // Remove selected cards from hand
-    const newHand = hand.filter((_, index) => !selectedCards.has(index));
-    const discardedCount = selectedCards.size;
+    const newHand = state.hand.filter((_, index) => !state.selectedCards.has(index));
+    const discardedCount = state.selectedCards.size;
     
     // Draw new cards
-    hand = newHand;
-    drawCards(discardedCount);
+    state.hand = newHand;
+    drawCards(state, discardedCount);
     
     // Clear selected cards and update discard count
-    selectedCards.clear();
-    discardCount--;
+    state.selectedCards.clear();
+    state.discardCount--;
     
-    updateUI();
+    updateUI(state);
 }
 
 // Evaluate poker hand
@@ -250,9 +255,9 @@ function calculateCombatEffects(cards, scoringCards) {
 }
 
 // Calculate and display current hand values
-function updateHandCalculator() {
-    if (hand.length >= 5) {
-        const previewHand = hand.slice(0, 5);
+function updateHandCalculator(state) {
+    if (state.hand.length >= 5) {
+        const previewHand = state.hand.slice(0, 5);
         const { scoringCards } = evaluateHand(previewHand);
         const effects = calculateCombatEffects(previewHand, scoringCards);
         
@@ -269,17 +274,17 @@ function updateHandCalculator() {
 }
 
 // End turn and resolve combat
-function endTurn() {
-    if (hand.length > 5) {
+function endTurn(state) {
+    if (state.hand.length > 5) {
         // Need to select 5 cards
-        selectingFinalHand = true;
+        state.selectingFinalHand = true;
         document.getElementById('select-hand-modal').style.display = 'flex';
-        updateUI();
+        updateUI(state);
         return;
     }
     
-    const selectedHand = hand.filter((_, index) => 
-        hand.length === 5 || selectedCards.has(index)
+    const selectedHand = state.hand.filter((_, index) => 
+        state.hand.length === 5 || state.selectedCards.has(index)
     );
     
     if (selectedHand.length !== 5) {
@@ -292,57 +297,67 @@ function endTurn() {
     const effects = calculateCombatEffects(selectedHand, scoringCards);
     
     // Apply effects
-    enemy.health -= effects.damage;
-    player.shield = effects.shield;
-    player.health = Math.min(player.health + effects.healing, 50);
-    player.pentacles += effects.pentacles;
+    const currentEnemy = state.enemies[state.currentEnemyIndex];
+    currentEnemy.health -= effects.damage;
+    state.player.shield = effects.shield;
+    state.player.health = Math.min(state.player.health + effects.healing, 50);
+    state.player.pentacles += effects.pentacles;
     
     // Enemy turn
-    const actualDamage = Math.max(0, enemy.damage - player.shield);
-    player.health -= actualDamage;
-    player.shield = 0;
+    const actualDamage = Math.max(0, currentEnemy.damage - state.player.shield);
+    state.player.health -= actualDamage;
     
     // Check win/lose conditions
-    if (enemy.health <= 0) {
-        currentEnemyIndex++;
-        if (currentEnemyIndex < enemies.length) {
+    if (currentEnemy.health <= 0) {
+        state.currentEnemyIndex++;
+        if (state.currentEnemyIndex < state.enemies.length) {
             alert('You defeated the enemy! Next battle!');
-            enemy = enemies[currentEnemyIndex];
-            // Reset for next battle
-            initGame();
+            initGame(state);
         } else {
             alert('You won! All enemies have been defeated!');
-            currentEnemyIndex = 0;
-            enemy = enemies[currentEnemyIndex];
-            initGame();
+            state.currentEnemyIndex = 0;
+            state.enemies.forEach(enemy => {
+                enemy.health = enemy.damage === 6 ? 30 : 35;
+            });
+            initGame(state);
         }
-    } else if (player.health <= 0) {
+    } else if (state.player.health <= 0) {
         alert('You lost! Try again.');
-        initGame();
+        state.currentEnemyIndex = 0;
+        state.enemies.forEach(enemy => {
+            enemy.health = enemy.damage === 6 ? 30 : 35;
+        });
+        state.player.health = 50;
+        state.player.pentacles = 0;
+        initGame(state);
     } else {
-        initGame()
+        // Reset for next round
+        initGame(state);
     }
 }
 
 // Update UI
-function updateUI() {
+function updateUI(state) {
+    const currentEnemy = state.enemies[state.currentEnemyIndex];
+    
     // Update enemy stats
-    document.getElementById('enemy-health').textContent = enemy.health;
-    document.getElementById('enemy-damage').textContent = enemy.damage;
+    document.getElementById('enemy-health').textContent = currentEnemy.health;
+    document.getElementById('enemy-damage').textContent = currentEnemy.damage;
     
     // Update player stats
-    document.getElementById('player-health').textContent = player.health;
-    document.getElementById('player-shield').textContent = player.shield;
-    document.getElementById('player-pentacles').textContent = player.pentacles;
-
-    document.getElementById('deck-count').textContent = deck.length;
+    document.getElementById('player-health').textContent = state.player.health;
+    document.getElementById('player-shield').textContent = state.player.shield;
+    document.getElementById('player-pentacles').textContent = state.player.pentacles;
+    
+    // Update deck count
+    document.getElementById('deck-count').textContent = state.deck.length;
     
     // Update cards container
     const container = document.getElementById('cards-container');
     container.innerHTML = '';
-    hand.forEach((card, index) => {
+    state.hand.forEach((card, index) => {
         const cardElement = createCardElement(card, index);
-        if (selectedCards.has(index)) {
+        if (state.selectedCards.has(index)) {
             cardElement.classList.add('selected');
         }
         container.appendChild(cardElement);
@@ -350,50 +365,50 @@ function updateUI() {
     
     // Update hand value if there are selected cards
     const handValueElement = document.getElementById('hand-value');
-    if (selectedCards.size > 0) {
-        const selectedHand = hand.filter((_, index) => selectedCards.has(index));
+    if (state.selectedCards.size > 0) {
+        const selectedHand = state.hand.filter((_, index) => state.selectedCards.has(index));
         if (selectedHand.length === 5) {
             const { handType } = evaluateHand(selectedHand);
             handValueElement.textContent = `Hand: ${handType}`;
         } else {
             handValueElement.textContent = `Select 5 cards for a hand`;
         }
-    } else if (hand.length === 5) {
-        const { handType } = evaluateHand(hand);
+    } else if (state.hand.length === 5) {
+        const { handType } = evaluateHand(state.hand);
         handValueElement.textContent = `Hand: ${handType}`;
     } else {
         handValueElement.textContent = '';
     }
     
     // Update buttons
-    document.getElementById('discard-count').textContent = discardCount;
-    document.getElementById('discard-btn').disabled = discardCount === 0 || selectedCards.size === 0;
+    document.getElementById('discard-count').textContent = state.discardCount;
+    document.getElementById('discard-btn').disabled = state.discardCount === 0 || state.selectedCards.size === 0;
     
     // Update confirm button in modal
-    if (selectingFinalHand) {
-        document.getElementById('confirm-hand-btn').disabled = selectedCards.size !== 5;
+    if (state.selectingFinalHand) {
+        document.getElementById('confirm-hand-btn').disabled = state.selectedCards.size !== 5;
     }
     
     // Update hand calculator
-    updateHandCalculator();
+    updateHandCalculator(state);
 }
 
 // Confirm final hand selection
-function confirmHandSelection() {
-    if (selectedCards.size !== 5) return;
+function confirmHandSelection(state) {
+    if (state.selectedCards.size !== 5) return;
     
     // Close modal
     document.getElementById('select-hand-modal').style.display = 'none';
-    selectingFinalHand = false;
+    state.selectingFinalHand = false;
     
     // Process end turn with selected cards
-    endTurn();
+    endTurn(state);
 }
 
 // Event listeners
-document.getElementById('discard-btn').addEventListener('click', discardSelected);
-document.getElementById('end-turn-btn').addEventListener('click', endTurn);
-document.getElementById('confirm-hand-btn').addEventListener('click', confirmHandSelection);
+document.getElementById('discard-btn').addEventListener('click', () => discardSelected(gameState));
+document.getElementById('end-turn-btn').addEventListener('click', () => endTurn(gameState));
+document.getElementById('confirm-hand-btn').addEventListener('click', () => confirmHandSelection(gameState));
 
 // Start the game
-initGame();
+initGame(gameState);
