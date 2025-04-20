@@ -431,11 +431,85 @@ async function animateCardEffects(state, selectedHand, scoringCards) {
     return effects;
 }
 
+
+/// ENEMY ATTACK
+async function animateEnemyAttack(state, enemyDamage, shieldValue) {
+    const enemyArea = document.querySelector('.enemy-area');
+    const shieldElement = document.getElementById('player-shield');
+    const healthElement = document.getElementById('player-health');
+    
+    const enemyCenter = getElementCenter(enemyArea);
+    
+    // Create damage text element
+    const damageElement = document.createElement('div');
+    damageElement.className = 'enemy-damage';
+    damageElement.textContent = enemyDamage;
+    damageElement.style.left = `${enemyCenter.x - 30}px`;
+    damageElement.style.top = `${enemyCenter.y - 30}px`;
+    document.body.appendChild(damageElement);
+    
+    // Wait a frame for the initial position to take effect
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    
+    if (shieldValue > 0) {
+        // Animate to shield first
+        const shieldCenter = getElementCenter(shieldElement);
+        damageElement.style.left = `${shieldCenter.x - 30}px`;
+        damageElement.style.top = `${shieldCenter.y - 30}px`;
+        
+        await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+        
+        shieldElement.classList.add('hit');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        shieldElement.classList.remove('hit');
+        
+        const remainingDamage = Math.max(0, enemyDamage - shieldValue);
+        
+        if (remainingDamage > 0) {
+            // Update damage text
+            damageElement.textContent = remainingDamage;
+            
+            // Animate to health
+            const healthCenter = getElementCenter(healthElement);
+            damageElement.style.left = `${healthCenter.x - 30}px`;
+            damageElement.style.top = `${healthCenter.y - 30}px`;
+            
+            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+            
+            healthElement.classList.add('hit');
+            await new Promise(resolve => setTimeout(resolve, 300));
+            healthElement.classList.remove('hit');
+        }
+    } else {
+        // No shield, go directly to health
+        const healthCenter = getElementCenter(healthElement);
+        damageElement.style.left = `${healthCenter.x - 30}px`;
+        damageElement.style.top = `${healthCenter.y - 30}px`;
+        
+        await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+        
+        healthElement.classList.add('hit');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        healthElement.classList.remove('hit');
+    }
+    
+    // Fade out and remove damage element
+    damageElement.style.opacity = '0';
+    await new Promise(resolve => setTimeout(resolve, 200));
+    damageElement.remove();
+}
+
+
 // End turn and resolve combat
 async function endTurn(state) {
     if (state.isAnimating) {
         return;
     }
+
+    const enemyArea = document.querySelector('.enemy-area');
+    const shieldElement = document.getElementById('player-shield');
+    const healthElement = document.getElementById('player-health');
+    const enemyCenter = getElementCenter(enemyArea);
 
     if (state.hand.length > 5) {
         // Need to select 5 cards
@@ -475,15 +549,16 @@ async function endTurn(state) {
         document.getElementById('player-pentacles').textContent = state.player.pentacles;
         
         // Enemy turn
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.ENEMY_TURN_DELAY));
+        await animateEnemyAttack(state, currentEnemy.damage, state.player.shield);
         const actualDamage = Math.max(0, currentEnemy.damage - state.player.shield);
         state.player.health -= actualDamage;
         state.player.shield = 0;  // Reset shield after enemy attack
-        
+
         // Update UI after enemy attack
         document.getElementById('player-health').textContent = state.player.health;
         document.getElementById('player-shield').textContent = state.player.shield;
-        
+
         // Check win/lose conditions
         if (currentEnemy.health <= 0) {
             state.currentEnemyIndex++;

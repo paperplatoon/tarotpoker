@@ -253,3 +253,23 @@ body {
     50% { box-shadow: 0 0 20px #cc66ff, 0 0 30px #cc66ff; }
     100% { box-shadow: 0 0 5px #cc66ff; }
 }
+
+.enemy-damage {
+    position: fixed;
+    font-size: 4vmin;
+    font-weight: bold;
+    color: #ff4444;
+    pointer-events: none;
+    transition: all 0.5s cubic-bezier(0.25, 0.1, 0.25, 1);
+    z-index: 1000;
+}
+
+.stat.hit {
+    animation: hitEffect 0.3s ease-out;
+}
+
+@keyframes hitEffect {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); background-color: #ff4444; }
+    100% { transform: scale(1); }
+}
