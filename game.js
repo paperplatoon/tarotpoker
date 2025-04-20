@@ -14,7 +14,18 @@ const gameState = {
         { health: 35, damage: 8 }
     ],
     currentEnemyIndex: 0,
-    selectingFinalHand: false
+    selectingFinalHand: false,
+
+    isAnimating: false
+};
+
+const ANIMATION_CONFIG = {
+    CARD_FLIGHT_DURATION: 500,    // How long each card takes to reach its target
+    ANIMATION_STAGGER: 200,       // Delay between starting each card animation
+    CLEANUP_DURATION: 100,        // Time for cleanup after reaching target
+    GLOW_DURATION: 300,          // Duration of the glow effect
+    IMPACT_DURATION: 200,        // Duration of the impact effect
+    ENEMY_TURN_DELAY: 700        // Delay before enemy attacks
 };
 
 // Card suits and values
@@ -273,8 +284,159 @@ function updateHandCalculator(state) {
     }
 }
 
+
+// Add animation functions after calculateCombatEffects
+
+function getElementCenter(element) {
+    const rect = element.getBoundingClientRect();
+    return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+    };
+}
+
+function createImpactEffect(x, y) {
+    const impact = document.createElement('div');
+    impact.className = 'impact-effect';
+    impact.style.left = `${x - 50}px`;
+    impact.style.top = `${y - 50}px`;
+    document.body.appendChild(impact);
+    
+    setTimeout(() => impact.remove(), ANIMATION_CONFIG.IMPACT_DURATION);
+}
+
+async function animateCard(card, cardElement, targetElement, effect, scoringCards, index) {
+    const start = getElementCenter(cardElement);
+    const end = getElementCenter(targetElement);
+    
+    const clone = cardElement.cloneNode(true);
+    clone.className = `card suit-${card.suit.toLowerCase()} animating`;
+    clone.style.left = `${start.x - 50}px`;
+    clone.style.top = `${start.y - 75}px`;
+    clone.style.zIndex = '1000';
+    document.body.appendChild(clone);
+    
+    cardElement.style.opacity = '0';
+    
+    // Wait a frame for the initial position to take effect
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    
+    const multiplier = scoringCards.has(index) ? 2 : 1;
+    const effectiveValue = card.value * multiplier;
+    
+    // Animate to target
+    clone.style.left = `${end.x - 50}px`;
+    clone.style.top = `${end.y - 75}px`;
+    clone.style.transform = 'scale(0.1)';
+    
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+    
+    switch (card.suit) {
+        case 'Swords':
+            createImpactEffect(end.x, end.y);
+            clone.style.transform = 'scale(0.3) translateY(-50px)';
+            clone.style.opacity = '0';
+            break;
+            
+        case 'Wands':
+            targetElement.classList.add('glowing-blue');
+            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
+            targetElement.textContent = effect.shield;
+            targetElement.classList.remove('glowing-blue');
+            break;
+            
+        case 'Cups':
+            targetElement.classList.add('glowing-green');
+            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
+            targetElement.textContent = Math.min(effect.health + effect.healing, 50);
+            targetElement.classList.remove('glowing-green');
+            break;
+            
+        case 'Pentacles':
+            targetElement.classList.add('glowing-red');
+            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
+            targetElement.textContent = effect.pentacles;
+            targetElement.classList.remove('glowing-red');
+            break;
+    }
+    
+    // Clean up
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CLEANUP_DURATION));
+    clone.remove();
+}
+
+async function animateCardEffects(state, selectedHand, scoringCards) {
+    const effects = calculateCombatEffects(selectedHand, scoringCards);
+    
+    // Initialize effect counters
+    const runningEffects = {
+        health: state.player.health,
+        shield: 0,
+        pentacles: state.player.pentacles
+    };
+
+    // Animate all cards simultaneously
+    const animationPromises = [];
+    
+    for (let i = 0; i < selectedHand.length; i++) {
+        const card = selectedHand[i];
+        const cardElements = document.querySelectorAll('.card');
+        const cardIndex = state.hand.indexOf(card);
+        const cardElement = cardElements[cardIndex];
+        
+        let targetElement;
+        
+        switch (card.suit) {
+            case 'Swords':
+                targetElement = document.querySelector('.enemy-area');
+                break;
+            case 'Wands':
+                targetElement = document.getElementById('player-shield');
+                break;
+            case 'Cups':
+                targetElement = document.getElementById('player-health');
+                break;
+            case 'Pentacles':
+                targetElement = document.getElementById('player-pentacles');
+                break;
+        }
+        
+        if (cardElement && targetElement) {
+            const multiplier = scoringCards.has(i) ? 2 : 1;
+            const effectiveValue = card.value * multiplier;
+            
+            // Update running effect counters
+            switch (card.suit) {
+                case 'Wands':
+                    runningEffects.shield += effectiveValue;
+                    break;
+                case 'Cups':
+                    runningEffects.health = Math.min(runningEffects.health + effectiveValue, 50);
+                    break;
+                case 'Pentacles':
+                    runningEffects.pentacles += effectiveValue;
+                    break;
+            }
+
+            if (i > 0) {
+                await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.ANIMATION_STAGGER));
+            }
+            
+            const animationPromise = animateCard(card, cardElement, targetElement, runningEffects, scoringCards, i);
+            animationPromises.push(animationPromise);
+        }  
+    }
+    await Promise.all(animationPromises);
+    
+    return effects;
+}
+
 // End turn and resolve combat
-function endTurn(state) {
+async function endTurn(state) {
+    if (state.isAnimating) {
+        return;
+    }
+
     if (state.hand.length > 5) {
         // Need to select 5 cards
         state.selectingFinalHand = true;
@@ -292,47 +454,71 @@ function endTurn(state) {
         return;
     }
     
-    // Evaluate hand and calculate effects
-    const { handType, scoringCards } = evaluateHand(selectedHand);
-    const effects = calculateCombatEffects(selectedHand, scoringCards);
-    
-    // Apply effects
-    const currentEnemy = state.enemies[state.currentEnemyIndex];
-    currentEnemy.health -= effects.damage;
-    state.player.shield = effects.shield;
-    state.player.health = Math.min(state.player.health + effects.healing, 50);
-    state.player.pentacles += effects.pentacles;
-    
-    // Enemy turn
-    const actualDamage = Math.max(0, currentEnemy.damage - state.player.shield);
-    state.player.health -= actualDamage;
-    
-    // Check win/lose conditions
-    if (currentEnemy.health <= 0) {
-        state.currentEnemyIndex++;
-        if (state.currentEnemyIndex < state.enemies.length) {
-            alert('You defeated the enemy! Next battle!');
-            initGame(state);
-        } else {
-            alert('You won! All enemies have been defeated!');
+    try {
+        // Evaluate hand
+        const { handType, scoringCards } = evaluateHand(selectedHand);
+        
+        // Animate card effects
+        const effects = await animateCardEffects(state, selectedHand, scoringCards);
+        
+        // Apply effects
+        const currentEnemy = state.enemies[state.currentEnemyIndex];
+        currentEnemy.health -= effects.damage;
+        state.player.shield = effects.shield;
+        state.player.health = Math.min(state.player.health + effects.healing, 50);
+        state.player.pentacles += effects.pentacles;
+        
+        // Update UI for final states
+        document.getElementById('enemy-health').textContent = currentEnemy.health;
+        document.getElementById('player-health').textContent = state.player.health;
+        document.getElementById('player-shield').textContent = state.player.shield;
+        document.getElementById('player-pentacles').textContent = state.player.pentacles;
+        
+        // Enemy turn
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const actualDamage = Math.max(0, currentEnemy.damage - state.player.shield);
+        state.player.health -= actualDamage;
+        state.player.shield = 0;  // Reset shield after enemy attack
+        
+        // Update UI after enemy attack
+        document.getElementById('player-health').textContent = state.player.health;
+        document.getElementById('player-shield').textContent = state.player.shield;
+        
+        // Check win/lose conditions
+        if (currentEnemy.health <= 0) {
+            state.currentEnemyIndex++;
+            if (state.currentEnemyIndex < state.enemies.length) {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                alert('You defeated the enemy! Next battle!');
+                initGame(state);
+            } else {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                alert('You won! All enemies have been defeated!');
+                state.currentEnemyIndex = 0;
+                state.enemies.forEach(enemy => {
+                    enemy.health = enemy.damage === 6 ? 30 : 35;
+                });
+                initGame(state);
+            }
+        } else if (state.player.health <= 0) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            alert('You lost! Try again.');
             state.currentEnemyIndex = 0;
             state.enemies.forEach(enemy => {
                 enemy.health = enemy.damage === 6 ? 30 : 35;
             });
+            state.player.health = 50;
+            state.player.pentacles = 0;
+            initGame(state);
+        } else {
+            // Reset for next round
+            await new Promise(resolve => setTimeout(resolve, 500));
             initGame(state);
         }
-    } else if (state.player.health <= 0) {
-        alert('You lost! Try again.');
-        state.currentEnemyIndex = 0;
-        state.enemies.forEach(enemy => {
-            enemy.health = enemy.damage === 6 ? 30 : 35;
-        });
-        state.player.health = 50;
-        state.player.pentacles = 0;
-        initGame(state);
-    } else {
-        // Reset for next round
-        initGame(state);
+    }  finally {
+        // Always reset animation flag and re-enable button
+        state.isAnimating = false;
+        document.getElementById('end-turn-btn').disabled = false;
     }
 }
 
@@ -382,8 +568,14 @@ function updateUI(state) {
     
     // Update buttons
     document.getElementById('discard-count').textContent = state.discardCount;
-    document.getElementById('discard-btn').disabled = state.discardCount === 0 || state.selectedCards.size === 0;
+    // Only disable buttons if animation is in progress or conditions not met
+    const discardBtn = document.getElementById('discard-btn');
+    const endTurnBtn = document.getElementById('end-turn-btn');
     
+    if (!endTurnBtn.disabled) {  // Only update if not currently animating
+        discardBtn.disabled = state.discardCount === 0 || state.selectedCards.size === 0;
+    }
+
     // Update confirm button in modal
     if (state.selectingFinalHand) {
         document.getElementById('confirm-hand-btn').disabled = state.selectedCards.size !== 5;
@@ -412,3 +604,18 @@ document.getElementById('confirm-hand-btn').addEventListener('click', () => conf
 
 // Start the game
 initGame(gameState);
+
+
+//CSS TIMINGS
+// Apply CSS timing from our config
+function applyAnimationTimings() {
+    const style = document.createElement('style');
+    style.innerHTML = `
+        .card.animating {
+            transition: all ${ANIMATION_CONFIG.CARD_FLIGHT_DURATION}ms cubic-bezier(0.25, 0.1, 0.25, 1);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+document.addEventListener('DOMContentLoaded', applyAnimationTimings);
