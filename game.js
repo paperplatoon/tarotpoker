@@ -14,48 +14,47 @@ const gameState = {
         { health: 35, damage: 8 }
     ],
     currentEnemyIndex: 0,
-    selectingFinalHand: false,
-
     isAnimating: false
 };
 
+// Game Configuration
 const ANIMATION_CONFIG = {
-    CARD_FLIGHT_DURATION: 500,    // How long each card takes to reach its target
-    ANIMATION_STAGGER: 200,       // Delay between starting each card animation
-    CLEANUP_DURATION: 100,        // Time for cleanup after reaching target
-    GLOW_DURATION: 300,          // Duration of the glow effect
-    IMPACT_DURATION: 200,        // Duration of the impact effect
-    ENEMY_TURN_DELAY: 700        // Delay before enemy attacks
+    CARD_FLIGHT_DURATION: 500,
+    ANIMATION_STAGGER: 200,
+    CLEANUP_DURATION: 100,
+    GLOW_DURATION: 300,
+    IMPACT_DURATION: 200,
+    ENEMY_TURN_DELAY: 700
 };
 
-// Card suits and values
+// Constants
 const suits = ['Swords', 'Cups', 'Pentacles', 'Wands'];
 const values = [1, 2, 3, 4, 5];
 
-// Create a new deck
+
+// Card and Deck Management
 function createDeck() {
     const deck = [];
     suits.forEach(suit => {
         values.forEach(value => {
-            deck.push({ suit, value });
+            if (suit == "Cups") {
+                if (value < 4) {
+                    deck.push({ suit, value });
+                }
+            } else {
+                deck.push({ suit, value });
+            }
+            
         });
     });
+
+    specialCards.forEach(card => {
+        deck.push({ ...card });
+    });
+
     return deck;
 }
 
-// Initialize the game
-function initGame(state) {
-    state.deck = createDeck();
-    shuffleDeck(state);
-    state.hand = [];
-    state.selectedCards.clear();
-    state.discardCount = 2;
-    state.player.shield = 0;
-    drawCards(state, 5);
-    updateUI(state);
-}
-
-// Shuffle the deck
 function shuffleDeck(state) {
     for (let i = state.deck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -63,7 +62,6 @@ function shuffleDeck(state) {
     }
 }
 
-// Draw cards from deck
 function drawCards(state, count) {
     for (let i = 0; i < count; i++) {
         if (state.deck.length > 0) {
@@ -72,28 +70,67 @@ function drawCards(state, count) {
     }
 }
 
-// Create card HTML element
+// Update the playSpecialCard function
+async function playSpecialCard(state, index) {
+    if (state.isAnimating) return;
+    
+    const card = state.hand[index];
+    
+    if (card.type === "special") {
+        state.isAnimating = true;
+        document.getElementById('play-hand-btn').disabled = true;
+        
+        try {
+            // Call the card's effect function
+            await card.effect(state, index);
+            
+            // Remove the card from hand
+            state.hand = state.hand.filter((_, i) => i !== index);
+            
+            // Check if the game state has changed after applying the special card effect
+            const gameStateChanged = await checkGameState(state);
+            
+            if (!gameStateChanged) {
+                updateUI(state);
+            }
+        } finally {
+            state.isAnimating = false;
+            document.getElementById('play-hand-btn').disabled = false;
+        }
+    }
+}
+
+
 function createCardElement(card, index) {
     const div = document.createElement('div');
-    div.className = `card suit-${card.suit.toLowerCase()}`;
-    div.dataset.index = index;
     
-    div.innerHTML = `
-        <div style="font-size: 24px; font-weight: bold;">${card.value}</div>
-        <div style="font-size: 14px;">${card.suit}</div>
-    `;
-    
-    div.addEventListener('click', () => toggleCardSelection(gameState, index));
+    if (card.type === "special") {
+        div.className = `card special-card ${card.name.toLowerCase()}`;
+        div.dataset.index = index;
+        div.dataset.special = "true";
+        
+        div.innerHTML = `
+            <div style="font-size: 20px; font-weight: bold;">${card.name}</div>
+            <div style="font-size: 12px;">Special Card</div>
+            <div class="card-description">${card.description}</div>
+        `;
+        
+        div.addEventListener('click', () => playSpecialCard(gameState, index));
+    } else {
+        div.className = `card suit-${card.suit.toLowerCase()}`;
+        div.dataset.index = index;
+        
+        div.innerHTML = `
+            <div style="font-size: 24px; font-weight: bold;">${card.value}</div>
+            <div style="font-size: 14px;">${card.suit}</div>
+        `;
+        
+        div.addEventListener('click', () => toggleCardSelection(gameState, index));
+    }
     
     return div;
 }
-
-// Toggle card selection
 function toggleCardSelection(state, index) {
-    if (state.selectingFinalHand && state.selectedCards.size >= 5 && !state.selectedCards.has(index)) {
-        return; // Don't allow selecting more than 5 cards for final hand
-    }
-    
     if (state.selectedCards.has(index)) {
         state.selectedCards.delete(index);
     } else {
@@ -103,131 +140,72 @@ function toggleCardSelection(state, index) {
     updateUI(state);
 }
 
-// Discard selected cards
+// Game Logic - Discard and Hand Management
 function discardSelected(state) {
     if (state.discardCount <= 0 || state.selectedCards.size === 0) return;
     
-    // Remove selected cards from hand
     const newHand = state.hand.filter((_, index) => !state.selectedCards.has(index));
     const discardedCount = state.selectedCards.size;
     
-    // Draw new cards
     state.hand = newHand;
     drawCards(state, discardedCount);
     
-    // Clear selected cards and update discard count
     state.selectedCards.clear();
     state.discardCount--;
     
     updateUI(state);
 }
 
-// Evaluate poker hand
+// Poker Hand Evaluation (keeping this as one function for clarity)
 function evaluateHand(cards) {
-    // Count values
     const valueCounts = {};
+    const suitCounts = {};
+    
     cards.forEach(card => {
         valueCounts[card.value] = (valueCounts[card.value] || 0) + 1;
-    });
-    
-    // Count suits
-    const suitCounts = {};
-    cards.forEach(card => {
         suitCounts[card.suit] = (suitCounts[card.suit] || 0) + 1;
     });
     
-    // Check for patterns
     const values = Object.keys(valueCounts).map(Number).sort((a, b) => a - b);
     const maxCount = Math.max(...Object.values(valueCounts));
     const maxSuitCount = Math.max(...Object.values(suitCounts));
     
-    // Check for straight
     let isStraight = false;
     if (values.length === 5) {
         isStraight = values[values.length - 1] - values[0] === 4;
     }
     
-    // Determine hand type and scoring cards
     let handType = '';
     let scoringCards = new Set();
     
     if (maxCount === 5) {
         handType = 'Five of a Kind';
-        Object.entries(valueCounts).forEach(([value, count]) => {
-            if (count === 5) {
-                cards.forEach((card, index) => {
-                    if (card.value === parseInt(value)) {
-                        scoringCards.add(index);
-                    }
-                });
-            }
-        });
+        scoringCards = getScoringCardsForValue(cards, valueCounts, 5);
     } else if (maxCount === 4) {
         handType = 'Four of a Kind';
-        Object.entries(valueCounts).forEach(([value, count]) => {
-            if (count === 4) {
-                cards.forEach((card, index) => {
-                    if (card.value === parseInt(value)) {
-                        scoringCards.add(index);
-                    }
-                });
-            }
-        });
+        scoringCards = getScoringCardsForValue(cards, valueCounts, 4);
     } else if (maxCount === 3 && Object.values(valueCounts).includes(2)) {
         handType = 'Full House';
-        Object.entries(valueCounts).forEach(([value, count]) => {
-            if (count === 3 || count === 2) {
-                cards.forEach((card, index) => {
-                    if (card.value === parseInt(value)) {
-                        scoringCards.add(index);
-                    }
-                });
-            }
-        });
+        scoringCards = getFullHouseScoringCards(cards, valueCounts);
     } else if (maxSuitCount === 5) {
         if (isStraight) {
             handType = 'Straight Flush';
-            cards.forEach((_, index) => scoringCards.add(index));
         } else {
             handType = 'Flush';
-            cards.forEach((_, index) => scoringCards.add(index));
         }
+        cards.forEach((_, index) => scoringCards.add(index));
     } else if (isStraight) {
         handType = 'Straight';
         cards.forEach((_, index) => scoringCards.add(index));
     } else if (maxCount === 3) {
         handType = 'Three of a Kind';
-        Object.entries(valueCounts).forEach(([value, count]) => {
-            if (count === 3) {
-                cards.forEach((card, index) => {
-                    if (card.value === parseInt(value)) {
-                        scoringCards.add(index);
-                    }
-                });
-            }
-        });
+        scoringCards = getScoringCardsForValue(cards, valueCounts, 3);
     } else if (Object.values(valueCounts).filter(count => count === 2).length === 2) {
         handType = 'Two Pair';
-        Object.entries(valueCounts).forEach(([value, count]) => {
-            if (count === 2) {
-                cards.forEach((card, index) => {
-                    if (card.value === parseInt(value)) {
-                        scoringCards.add(index);
-                    }
-                });
-            }
-        });
+        scoringCards = getScoringCardsForValue(cards, valueCounts, 2);
     } else if (maxCount === 2) {
         handType = 'One Pair';
-        Object.entries(valueCounts).forEach(([value, count]) => {
-            if (count === 2) {
-                cards.forEach((card, index) => {
-                    if (card.value === parseInt(value)) {
-                        scoringCards.add(index);
-                    }
-                });
-            }
-        });
+        scoringCards = getScoringCardsForValue(cards, valueCounts, 2);
     } else {
         handType = 'High Card';
     }
@@ -235,7 +213,36 @@ function evaluateHand(cards) {
     return { handType, scoringCards };
 }
 
-// Calculate combat effects
+// Helper functions for hand evaluation
+function getScoringCardsForValue(cards, valueCounts, targetCount) {
+    const scoringCards = new Set();
+    Object.entries(valueCounts).forEach(([value, count]) => {
+        if (count >= targetCount) {
+            cards.forEach((card, index) => {
+                if (card.value === parseInt(value)) {
+                    scoringCards.add(index);
+                }
+            });
+        }
+    });
+    return scoringCards;
+}
+
+function getFullHouseScoringCards(cards, valueCounts) {
+    const scoringCards = new Set();
+    Object.entries(valueCounts).forEach(([value, count]) => {
+        if (count === 3 || count === 2) {
+            cards.forEach((card, index) => {
+                if (card.value === parseInt(value)) {
+                    scoringCards.add(index);
+                }
+            });
+        }
+    });
+    return scoringCards;
+}
+
+// Combat Effects Calculation
 function calculateCombatEffects(cards, scoringCards) {
     let damage = 0;
     let shield = 0;
@@ -265,28 +272,36 @@ function calculateCombatEffects(cards, scoringCards) {
     return { damage, shield, healing, pentacles };
 }
 
-// Calculate and display current hand values
+// UI Update Functions
 function updateHandCalculator(state) {
-    if (state.hand.length >= 5) {
-        const previewHand = state.hand.slice(0, 5);
-        const { scoringCards } = evaluateHand(previewHand);
-        const effects = calculateCombatEffects(previewHand, scoringCards);
+    const selectedCards = Array.from(state.selectedCards).map(index => state.hand[index]);
+    
+    if (selectedCards.length === 5) {
+        const { scoringCards } = evaluateHand(selectedCards);
+        // Convert indices from selected cards to indices in the original hand
+        const mappedScoringCards = new Set();
+        Array.from(scoringCards).forEach(selectedIndex => {
+            mappedScoringCards.add(Array.from(state.selectedCards)[selectedIndex]);
+        });
+        const effects = calculateCombatEffects(selectedCards, scoringCards);
         
         document.getElementById('calc-swords').textContent = effects.damage;
         document.getElementById('calc-wands').textContent = effects.shield;
         document.getElementById('calc-cups').textContent = effects.healing;
         document.getElementById('calc-pentacles').textContent = effects.pentacles;
     } else {
-        document.getElementById('calc-swords').textContent = 0;
-        document.getElementById('calc-wands').textContent = 0;
-        document.getElementById('calc-cups').textContent = 0;
-        document.getElementById('calc-pentacles').textContent = 0;
+        resetHandCalculatorUI();
     }
 }
 
+function resetHandCalculatorUI() {
+    document.getElementById('calc-swords').textContent = 0;
+    document.getElementById('calc-wands').textContent = 0;
+    document.getElementById('calc-cups').textContent = 0;
+    document.getElementById('calc-pentacles').textContent = 0;
+}
 
-// Add animation functions after calculateCombatEffects
-
+// Animation Functions (keeping these larger since they need to be synchronized)
 function getElementCenter(element) {
     const rect = element.getBoundingClientRect();
     return {
@@ -305,6 +320,7 @@ function createImpactEffect(x, y) {
     setTimeout(() => impact.remove(), ANIMATION_CONFIG.IMPACT_DURATION);
 }
 
+// Card Animation (keeping this as one function to ensure smooth animation)
 async function animateCard(card, cardElement, targetElement, effect, scoringCards, index) {
     const start = getElementCenter(cardElement);
     const end = getElementCenter(targetElement);
@@ -318,13 +334,11 @@ async function animateCard(card, cardElement, targetElement, effect, scoringCard
     
     cardElement.style.opacity = '0';
     
-    // Wait a frame for the initial position to take effect
     await new Promise(resolve => requestAnimationFrame(resolve));
     
     const multiplier = scoringCards.has(index) ? 2 : 1;
     const effectiveValue = card.value * multiplier;
     
-    // Animate to target
     clone.style.left = `${end.x - 50}px`;
     clone.style.top = `${end.y - 75}px`;
     clone.style.transform = 'scale(0.1)';
@@ -339,85 +353,55 @@ async function animateCard(card, cardElement, targetElement, effect, scoringCard
             break;
             
         case 'Wands':
-            targetElement.classList.add('glowing-blue');
-            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
-            targetElement.textContent = effect.shield;
-            targetElement.classList.remove('glowing-blue');
+            await applyGlowEffect(targetElement, 'glowing-blue', effect.shield);
             break;
             
         case 'Cups':
-            targetElement.classList.add('glowing-green');
-            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
-            targetElement.textContent = Math.min(effect.health + effect.healing, 50);
-            targetElement.classList.remove('glowing-green');
+            await applyGlowEffect(targetElement, 'glowing-green', Math.min(effect.health + effect.healing, 50));
             break;
             
         case 'Pentacles':
-            targetElement.classList.add('glowing-red');
-            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
-            targetElement.textContent = effect.pentacles;
-            targetElement.classList.remove('glowing-red');
+            await applyGlowEffect(targetElement, 'glowing-red', effect.pentacles);
             break;
     }
     
-    // Clean up
     await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CLEANUP_DURATION));
     clone.remove();
 }
 
+async function applyGlowEffect(element, className, newValue) {
+    element.classList.add(className);
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.GLOW_DURATION));
+    element.textContent = newValue;
+    element.classList.remove(className);
+}
+
+// Main Animation Orchestration (keeping these larger to maintain timing synchronization)
 async function animateCardEffects(state, selectedHand, scoringCards) {
     const effects = calculateCombatEffects(selectedHand, scoringCards);
     
-    // Initialize effect counters
     const runningEffects = {
         health: state.player.health,
         shield: 0,
         pentacles: state.player.pentacles
     };
 
-    // Animate all cards simultaneously
     const animationPromises = [];
+    
+    // Get the card elements we need to animate
+    const cardElements = document.querySelectorAll('.card');
+    const selectedCardIndices = Array.from(state.selectedCards);
     
     for (let i = 0; i < selectedHand.length; i++) {
         const card = selectedHand[i];
-        const cardElements = document.querySelectorAll('.card');
-        const cardIndex = state.hand.indexOf(card);
-        const cardElement = cardElements[cardIndex];
+        const index = selectedCardIndices[i];
+        const cardElement = cardElements[index];
         
-        let targetElement;
-        
-        switch (card.suit) {
-            case 'Swords':
-                targetElement = document.querySelector('.enemy-area');
-                break;
-            case 'Wands':
-                targetElement = document.getElementById('player-shield');
-                break;
-            case 'Cups':
-                targetElement = document.getElementById('player-health');
-                break;
-            case 'Pentacles':
-                targetElement = document.getElementById('player-pentacles');
-                break;
-        }
+        const targetElement = getTargetElement(card.suit);
         
         if (cardElement && targetElement) {
-            const multiplier = scoringCards.has(i) ? 2 : 1;
-            const effectiveValue = card.value * multiplier;
+            updateRunningEffects(runningEffects, card, scoringCards.has(i));
             
-            // Update running effect counters
-            switch (card.suit) {
-                case 'Wands':
-                    runningEffects.shield += effectiveValue;
-                    break;
-                case 'Cups':
-                    runningEffects.health = Math.min(runningEffects.health + effectiveValue, 50);
-                    break;
-                case 'Pentacles':
-                    runningEffects.pentacles += effectiveValue;
-                    break;
-            }
-
             if (i > 0) {
                 await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.ANIMATION_STAGGER));
             }
@@ -431,8 +415,37 @@ async function animateCardEffects(state, selectedHand, scoringCards) {
     return effects;
 }
 
+function getTargetElement(suit) {
+    switch (suit) {
+        case 'Swords':
+            return document.querySelector('.enemy-area');
+        case 'Wands':
+            return document.getElementById('player-shield');
+        case 'Cups':
+            return document.getElementById('player-health');
+        case 'Pentacles':
+            return document.getElementById('player-pentacles');
+    }
+}
 
-/// ENEMY ATTACK
+function updateRunningEffects(runningEffects, card, isScoring) {
+    const multiplier = isScoring ? 2 : 1;
+    const effectiveValue = card.value * multiplier;
+    
+    switch (card.suit) {
+        case 'Wands':
+            runningEffects.shield += effectiveValue;
+            break;
+        case 'Cups':
+            runningEffects.health = Math.min(runningEffects.health + effectiveValue, 50);
+            break;
+        case 'Pentacles':
+            runningEffects.pentacles += effectiveValue;
+            break;
+    }
+}
+
+// Enemy Attack Animation (keeping as one function for smooth animation)
 async function animateEnemyAttack(state, enemyDamage, shieldValue) {
     const enemyArea = document.querySelector('.enemy-area');
     const shieldElement = document.getElementById('player-shield');
@@ -440,7 +453,6 @@ async function animateEnemyAttack(state, enemyDamage, shieldValue) {
     
     const enemyCenter = getElementCenter(enemyArea);
     
-    // Create damage text element
     const damageElement = document.createElement('div');
     damageElement.className = 'enemy-damage';
     damageElement.textContent = enemyDamage;
@@ -448,172 +460,208 @@ async function animateEnemyAttack(state, enemyDamage, shieldValue) {
     damageElement.style.top = `${enemyCenter.y - 30}px`;
     document.body.appendChild(damageElement);
     
-    // Wait a frame for the initial position to take effect
     await new Promise(resolve => requestAnimationFrame(resolve));
     
     if (shieldValue > 0) {
-        // Animate to shield first
-        const shieldCenter = getElementCenter(shieldElement);
-        damageElement.style.left = `${shieldCenter.x - 30}px`;
-        damageElement.style.top = `${shieldCenter.y - 30}px`;
-        
-        await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
-        
-        shieldElement.classList.add('hit');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        shieldElement.classList.remove('hit');
-        
+        await animateDamageToShield(damageElement, shieldElement, enemyDamage, shieldValue);
         const remainingDamage = Math.max(0, enemyDamage - shieldValue);
         
         if (remainingDamage > 0) {
-            // Update damage text
             damageElement.textContent = remainingDamage;
-            
-            // Animate to health
-            const healthCenter = getElementCenter(healthElement);
-            damageElement.style.left = `${healthCenter.x - 30}px`;
-            damageElement.style.top = `${healthCenter.y - 30}px`;
-            
-            await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
-            
-            healthElement.classList.add('hit');
-            await new Promise(resolve => setTimeout(resolve, 300));
-            healthElement.classList.remove('hit');
+            await animateDamageToHealth(damageElement, healthElement);
         }
     } else {
-        // No shield, go directly to health
-        const healthCenter = getElementCenter(healthElement);
-        damageElement.style.left = `${healthCenter.x - 30}px`;
-        damageElement.style.top = `${healthCenter.y - 30}px`;
-        
-        await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
-        
-        healthElement.classList.add('hit');
-        await new Promise(resolve => setTimeout(resolve, 300));
-        healthElement.classList.remove('hit');
+        await animateDamageToHealth(damageElement, healthElement);
     }
     
-    // Fade out and remove damage element
     damageElement.style.opacity = '0';
     await new Promise(resolve => setTimeout(resolve, 200));
     damageElement.remove();
 }
 
+async function animateDamageToShield(damageElement, shieldElement, enemyDamage, shieldValue) {
+    const shieldCenter = getElementCenter(shieldElement);
+    damageElement.style.left = `${shieldCenter.x - 30}px`;
+    damageElement.style.top = `${shieldCenter.y - 30}px`;
+    
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+    
+    shieldElement.classList.add('hit');
+    await new Promise(resolve => setTimeout(resolve, 300));
+    shieldElement.classList.remove('hit');
+}
 
-// End turn and resolve combat
-async function endTurn(state) {
-    if (state.isAnimating) {
-        return;
-    }
+async function animateDamageToHealth(damageElement, healthElement) {
+    const healthCenter = getElementCenter(healthElement);
+    damageElement.style.left = `${healthCenter.x - 30}px`;
+    damageElement.style.top = `${healthCenter.y - 30}px`;
+    
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+    
+    healthElement.classList.add('hit');
+    await new Promise(resolve => setTimeout(resolve, 300));
+    healthElement.classList.remove('hit');
+}
 
-    const enemyArea = document.querySelector('.enemy-area');
-    const shieldElement = document.getElementById('player-shield');
-    const healthElement = document.getElementById('player-health');
-    const enemyCenter = getElementCenter(enemyArea);
-
-    if (state.hand.length > 5) {
-        // Need to select 5 cards
-        state.selectingFinalHand = true;
-        document.getElementById('select-hand-modal').style.display = 'flex';
-        updateUI(state);
+// endTurn
+async function playHand(state) {
+    if (state.isAnimating) return;
+    
+    // Check if any cards are selected
+    if (state.selectedCards.size === 0) {
+        alert('Please select at least 1 card to play.');
         return;
     }
     
-    const selectedHand = state.hand.filter((_, index) => 
-        state.hand.length === 5 || state.selectedCards.has(index)
-    );
-    
-    if (selectedHand.length !== 5) {
-        alert('Please select exactly 5 cards to end your turn.');
+    // Check if more than 5 cards are selected
+    if (state.selectedCards.size > 5) {
+        alert('You can only play up to 5 cards at a time.');
         return;
     }
     
     try {
-        // Evaluate hand
-        const { handType, scoringCards } = evaluateHand(selectedHand);
+        state.isAnimating = true;
+        document.getElementById('play-hand-btn').disabled = true;
+        
+        // Get cards that were selected
+        const selectedCards = Array.from(state.selectedCards).map(index => state.hand[index]);
+        
+        // Evaluate the hand
+        const { handType, scoringCards } = evaluateHand(selectedCards);
         
         // Animate card effects
-        const effects = await animateCardEffects(state, selectedHand, scoringCards);
+        const effects = await animateCardEffects(state, selectedCards, scoringCards);
         
-        // Apply effects
-        const currentEnemy = state.enemies[state.currentEnemyIndex];
-        currentEnemy.health -= effects.damage;
-        state.player.shield = effects.shield;
-        state.player.health = Math.min(state.player.health + effects.healing, 50);
-        state.player.pentacles += effects.pentacles;
+        // Apply player effects
+        applyPlayerEffects(state, effects);
         
-        // Update UI for final states
-        document.getElementById('enemy-health').textContent = currentEnemy.health;
-        document.getElementById('player-health').textContent = state.player.health;
-        document.getElementById('player-shield').textContent = state.player.shield;
-        document.getElementById('player-pentacles').textContent = state.player.pentacles;
+        // Remove played cards from hand
+        state.hand = state.hand.filter((_, index) => !state.selectedCards.has(index));
+        state.selectedCards.clear();
         
         // Enemy turn
         await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.ENEMY_TURN_DELAY));
-        await animateEnemyAttack(state, currentEnemy.damage, state.player.shield);
-        const actualDamage = Math.max(0, currentEnemy.damage - state.player.shield);
-        state.player.health -= actualDamage;
-        state.player.shield = 0;  // Reset shield after enemy attack
-
-        // Update UI after enemy attack
-        document.getElementById('player-health').textContent = state.player.health;
-        document.getElementById('player-shield').textContent = state.player.shield;
-
-        // Check win/lose conditions
-        if (currentEnemy.health <= 0) {
-            state.currentEnemyIndex++;
-            if (state.currentEnemyIndex < state.enemies.length) {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                alert('You defeated the enemy! Next battle!');
-                initGame(state);
-            } else {
-                await new Promise(resolve => setTimeout(resolve, 500));
-                alert('You won! All enemies have been defeated!');
-                state.currentEnemyIndex = 0;
-                state.enemies.forEach(enemy => {
-                    enemy.health = enemy.damage === 6 ? 30 : 35;
-                });
-                initGame(state);
-            }
-        } else if (state.player.health <= 0) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            alert('You lost! Try again.');
-            state.currentEnemyIndex = 0;
-            state.enemies.forEach(enemy => {
-                enemy.health = enemy.damage === 6 ? 30 : 35;
-            });
-            state.player.health = 50;
-            state.player.pentacles = 0;
-            initGame(state);
-        } else {
-            // Reset for next round
-            await new Promise(resolve => setTimeout(resolve, 500));
-            initGame(state);
-        }
-    }  finally {
-        // Always reset animation flag and re-enable button
+        await animateEnemyAttack(state, state.enemies[state.currentEnemyIndex].damage, state.player.shield);
+        
+        applyEnemyDamage(state);
+        
+        await handleRoundEnd(state);
+    } finally {
         state.isAnimating = false;
-        document.getElementById('end-turn-btn').disabled = false;
+        document.getElementById('play-hand-btn').disabled = false;
     }
 }
 
-// Update UI
-function updateUI(state) {
+function applyPlayerEffects(state, effects) {
+    const currentEnemy = state.enemies[state.currentEnemyIndex];
+    currentEnemy.health -= effects.damage;
+    state.player.shield = effects.shield;
+    state.player.health = Math.min(state.player.health + effects.healing, 50);
+    state.player.pentacles += effects.pentacles;
+    
+    updateCombatStatsUI(state);
+}
+
+function applyEnemyDamage(state) {
+    const currentEnemy = state.enemies[state.currentEnemyIndex];
+    const actualDamage = Math.max(0, currentEnemy.damage - state.player.shield);
+    state.player.health -= actualDamage;
+    state.player.shield = 0;
+    
+    updateCombatStatsUI(state);
+}
+
+async function checkGameState(state) {
     const currentEnemy = state.enemies[state.currentEnemyIndex];
     
-    // Update enemy stats
+    if (currentEnemy.health <= 0) {
+        await handleEnemyDefeat(state);
+        return true; // Game state changed (enemy defeated)
+    } else if (state.player.health <= 0) {
+        await handlePlayerDefeat(state);
+        return true; // Game state changed (player defeated)
+    }
+    
+    return false; // Game continues normally
+}
+
+async function handleRoundEnd(state) {
+    console.log("round ended; current hand length is " + state.hand.length)
+    
+    const gameStateChanged = await checkGameState(state);
+    if (gameStateChanged) return;
+    
+    if (state.hand.length < 7) {
+        drawCards(state, (7-state.hand.length));
+        state.discardCount = 2; 
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    updateUI(state);
+}
+
+async function handleEnemyDefeat(state) {
+    state.currentEnemyIndex++;
+    if (state.currentEnemyIndex < state.enemies.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        alert('You defeated the enemy! Next battle!');
+        // Clear hand and start fresh
+        state.hand = [];
+        state.selectedCards.clear();
+        state.discardCount = 2;
+        drawCards(state, 7);
+        updateUI(state);
+    } else {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        alert('You won! All enemies have been defeated!');
+        resetGameState(state);
+    }
+}
+
+async function handlePlayerDefeat(state) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    alert('You lost! Try again.');
+    resetGameState(state);
+}
+
+function resetGameState(state) {
+    state.currentEnemyIndex = 0;
+    state.enemies.forEach(enemy => {
+        enemy.health = enemy.damage === 6 ? 30 : 35;
+    });
+    state.player.health = 50;
+    state.player.pentacles = 0;
+    initGame(state);
+}
+
+// UI Update Functions
+function updateUI(state) {
+    updateEnemyUI(state);
+    updatePlayerStatsUI(state);
+    updateDeckUI(state);
+    updateCardsContainerUI(state);
+    updateHandValueUI(state);
+    updateButtonsUI(state);
+    updateHandCalculator(state);
+}
+
+function updateEnemyUI(state) {
+    const currentEnemy = state.enemies[state.currentEnemyIndex];
     document.getElementById('enemy-health').textContent = currentEnemy.health;
     document.getElementById('enemy-damage').textContent = currentEnemy.damage;
-    
-    // Update player stats
+}
+
+function updatePlayerStatsUI(state) {
     document.getElementById('player-health').textContent = state.player.health;
     document.getElementById('player-shield').textContent = state.player.shield;
     document.getElementById('player-pentacles').textContent = state.player.pentacles;
-    
-    // Update deck count
+}
+
+function updateDeckUI(state) {
     document.getElementById('deck-count').textContent = state.deck.length;
-    
-    // Update cards container
+}
+
+function updateCardsContainerUI(state) {
     const container = document.getElementById('cards-container');
     container.innerHTML = '';
     state.hand.forEach((card, index) => {
@@ -623,66 +671,62 @@ function updateUI(state) {
         }
         container.appendChild(cardElement);
     });
-    
-    // Update hand value if there are selected cards
-    const handValueElement = document.getElementById('hand-value');
-    if (state.selectedCards.size > 0) {
-        const selectedHand = state.hand.filter((_, index) => state.selectedCards.has(index));
-        if (selectedHand.length === 5) {
-            const { handType } = evaluateHand(selectedHand);
-            handValueElement.textContent = `Hand: ${handType}`;
-        } else {
-            handValueElement.textContent = `Select 5 cards for a hand`;
-        }
-    } else if (state.hand.length === 5) {
-        const { handType } = evaluateHand(state.hand);
-        handValueElement.textContent = `Hand: ${handType}`;
-    } else {
-        handValueElement.textContent = '';
-    }
-    
-    // Update buttons
-    document.getElementById('discard-count').textContent = state.discardCount;
-    // Only disable buttons if animation is in progress or conditions not met
-    const discardBtn = document.getElementById('discard-btn');
-    const endTurnBtn = document.getElementById('end-turn-btn');
-    
-    if (!endTurnBtn.disabled) {  // Only update if not currently animating
-        discardBtn.disabled = state.discardCount === 0 || state.selectedCards.size === 0;
-    }
-
-    // Update confirm button in modal
-    if (state.selectingFinalHand) {
-        document.getElementById('confirm-hand-btn').disabled = state.selectedCards.size !== 5;
-    }
-    
-    // Update hand calculator
-    updateHandCalculator(state);
 }
 
-// Confirm final hand selection
-function confirmHandSelection(state) {
-    if (state.selectedCards.size !== 5) return;
+function updateHandValueUI(state) {
+    const handValueElement = document.getElementById('hand-value');
     
-    // Close modal
-    document.getElementById('select-hand-modal').style.display = 'none';
-    state.selectingFinalHand = false;
+    if (state.selectedCards.size > 0 && state.selectedCards.size <= 5) {
+        const selectedCards = Array.from(state.selectedCards).map(index => state.hand[index]);
+        if (selectedCards.length === 5) {
+            const { handType } = evaluateHand(selectedCards);
+            handValueElement.textContent = `Hand: ${handType}`;
+        } else {
+            handValueElement.textContent = `Selected ${selectedCards.length} cards`;
+        }
+    } else {
+        handValueElement.textContent = 'Select up to 5 cards to play';
+    }
+}
+
+function updateButtonsUI(state) {
+    document.getElementById('discard-count').textContent = state.discardCount;
     
-    // Process end turn with selected cards
-    endTurn(state);
+    const discardBtn = document.getElementById('discard-btn');
+    const playHandBtn = document.getElementById('play-hand-btn');
+    
+    // Discard button is enabled if there are discards left and cards selected
+    discardBtn.disabled = state.discardCount === 0 || state.selectedCards.size === 0;
+    
+    // Play Hand button is enabled if 1-5 cards are selected
+    playHandBtn.disabled = state.selectedCards.size === 0 || state.selectedCards.size > 5;
+}
+
+function updateCombatStatsUI(state) {
+    document.getElementById('enemy-health').textContent = state.enemies[state.currentEnemyIndex].health;
+    document.getElementById('player-health').textContent = state.player.health;
+    document.getElementById('player-shield').textContent = state.player.shield;
+    document.getElementById('player-pentacles').textContent = state.player.pentacles;
+}
+
+// Game Initialization
+function initGame(state) {
+    state.deck = createDeck();
+    shuffleDeck(state);
+    state.hand = [];
+    state.selectedCards.clear();
+    state.discardCount = 2;
+    state.player.shield = 0;
+    drawCards(state, 7);
+    updateUI(state);
 }
 
 // Event listeners
 document.getElementById('discard-btn').addEventListener('click', () => discardSelected(gameState));
-document.getElementById('end-turn-btn').addEventListener('click', () => endTurn(gameState));
-document.getElementById('confirm-hand-btn').addEventListener('click', () => confirmHandSelection(gameState));
+document.getElementById('play-hand-btn').addEventListener('click', () => playHand(gameState));
+document.addEventListener('DOMContentLoaded', applyAnimationTimings);
 
-// Start the game
-initGame(gameState);
-
-
-//CSS TIMINGS
-// Apply CSS timing from our config
+// Apply animation timings
 function applyAnimationTimings() {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -693,4 +737,71 @@ function applyAnimationTimings() {
     document.head.appendChild(style);
 }
 
-document.addEventListener('DOMContentLoaded', applyAnimationTimings);
+// Start the game
+initGame(gameState);
+
+
+
+//
+// Add after the animation functions
+async function animateDeathCard(state, index) {
+    const card = state.hand[index];
+    const cardElement = document.querySelectorAll('.card')[index];
+    const hasSufficientPentacles = state.player.pentacles >= card.cost;
+    
+    // Get target based on effect
+    const targetElement = hasSufficientPentacles 
+        ? document.querySelector('.enemy-area')
+        : document.getElementById('player-pentacles');
+    
+    const start = getElementCenter(cardElement);
+    const end = getElementCenter(targetElement);
+    
+    const clone = cardElement.cloneNode(true);
+    clone.className = `card special-card death animating`;
+    clone.style.left = `${start.x - 50}px`;
+    clone.style.top = `${start.y - 75}px`;
+    clone.style.zIndex = '1000';
+    document.body.appendChild(clone);
+    
+    cardElement.style.opacity = '0';
+    
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    
+    clone.style.left = `${end.x - 50}px`;
+    clone.style.top = `${end.y - 75}px`;
+    clone.style.transform = 'scale(0.1)';
+    
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CARD_FLIGHT_DURATION));
+    
+    if (hasSufficientPentacles) {
+        // Death effect - deal 25 damage
+        state.enemies[state.currentEnemyIndex].health -= 25;
+        state.player.pentacles -= card.cost;
+        createImpactEffect(end.x, end.y);
+        
+        // Create damage number
+        const damageElement = document.createElement('div');
+        damageElement.className = 'enemy-damage';
+        damageElement.textContent = "25";
+        damageElement.style.left = `${end.x - 30}px`;
+        damageElement.style.top = `${end.y - 30}px`;
+        document.body.appendChild(damageElement);
+        
+        await new Promise(resolve => setTimeout(resolve, 800));
+        damageElement.style.opacity = '0';
+        await new Promise(resolve => setTimeout(resolve, 200));
+        damageElement.remove();
+    } else {
+        // Give player 3 pentacles
+        state.player.pentacles += 3;
+        await applyGlowEffect(targetElement, 'glowing-red', state.player.pentacles);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.CLEANUP_DURATION));
+    clone.remove();
+    
+    updateCombatStatsUI(state);
+}
+
+

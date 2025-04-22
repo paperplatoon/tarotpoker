@@ -273,3 +273,53 @@ body {
     50% { transform: scale(1.2); background-color: #ff4444; }
     100% { transform: scale(1); }
 }
+
+.special-card {
+    background: linear-gradient(135deg, #333 0%, #666 100%);
+    color: white;
+}
+
+.death {
+    background: linear-gradient(135deg, #000 0%, #440000 100%);
+    color: #fff;
+    border: 2px solid #800;
+}
+
+.death:hover {
+    box-shadow: 0 0 15px #f00;
+}
+
+/* Add to the styles.css file */
+.card-description {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    width: 200px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    z-index: 100;
+}
+
+.card:hover .card-description {
+    display: block;
+}
+
+.special-card {
+    background: linear-gradient(135deg, #333 0%, #666 100%);
+    color: white;
+    position: relative;
+}
+
+.death {
+    background: linear-gradient(135deg, #000 0%, #440000 100%);
+    color: #fff;
+    border: 2px solid #800;
+}
+
+.death:hover {
+    box-shadow: 0 0 15px #f00;
+}
