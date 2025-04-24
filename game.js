@@ -10,8 +10,8 @@ const gameState = {
         pentacles: 0
     },
     enemies: [
-        { health: 30, damage: 6 },
-        { health: 35, damage: 8 }
+        { health: 40, damage: 12 },
+        { health: 50, damage: 15 }
     ],
     currentEnemyIndex: 0,
     isAnimating: false
@@ -148,7 +148,7 @@ function discardSelected(state) {
     const discardedCount = state.selectedCards.size;
     
     state.hand = newHand;
-    drawCards(state, discardedCount);
+    drawCards(state, 7-newHand.length);
     
     state.selectedCards.clear();
     state.discardCount--;
@@ -156,8 +156,25 @@ function discardSelected(state) {
     updateUI(state);
 }
 
-// Poker Hand Evaluation (keeping this as one function for clarity)
+function isHandStraight(cards) {
+    if (cards.length !== 5) return false;
+    
+    const values = cards.map(card => card.value).sort((a, b) => a - b);
+    
+    for (let i = 1; i < values.length; i++) {
+        if (values[i] !== values[i-1] + 1) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 function evaluateHand(cards) {
+    if (cards.length === 0) {
+        return { handType: 'No Cards', scoringCards: new Set(), multiplier: 1 };
+    }
+    
     const valueCounts = {};
     const suitCounts = {};
     
@@ -170,48 +187,79 @@ function evaluateHand(cards) {
     const maxCount = Math.max(...Object.values(valueCounts));
     const maxSuitCount = Math.max(...Object.values(suitCounts));
     
-    let isStraight = false;
-    if (values.length === 5) {
-        isStraight = values[values.length - 1] - values[0] === 4;
-    }
+    let isStraight = false
+    isStraight = isHandStraight(cards);
     
     let handType = '';
     let scoringCards = new Set();
+    let multiplier = 1;
     
+    // Check for 5-card specific combinations first
+    if (cards.length === 5) {
+        if (maxSuitCount === 5 && isStraight) {
+            handType = 'Straight Flush (x5)';
+            multiplier = 5;
+            for (let i = 0; i < cards.length; i++) {
+                scoringCards.add(i);
+            }
+            return { handType, scoringCards, multiplier };
+        }
+        
+        if (isStraight) {
+            handType = 'Straight (x3)';
+            multiplier = 3;
+            for (let i = 0; i < cards.length; i++) {
+                scoringCards.add(i);
+            }
+            return { handType, scoringCards, multiplier };
+        }
+        
+        if (maxSuitCount === 5) {
+            handType = 'Flush (x3)';
+            multiplier = 3;
+            for (let i = 0; i < cards.length; i++) {
+                scoringCards.add(i);
+            }
+            return { handType, scoringCards, multiplier };
+        }
+    }
+    
+    // Now check for value-based combinations (works with any number of cards)
     if (maxCount === 5) {
-        handType = 'Five of a Kind';
+        handType = 'Five of a Kind (x5)';
+        multiplier = 5;
         scoringCards = getScoringCardsForValue(cards, valueCounts, 5);
     } else if (maxCount === 4) {
-        handType = 'Four of a Kind';
+        handType = 'Four of a Kind (x4)';
+        multiplier = 4;
         scoringCards = getScoringCardsForValue(cards, valueCounts, 4);
     } else if (maxCount === 3 && Object.values(valueCounts).includes(2)) {
-        handType = 'Full House';
+        handType = 'Full House (x4)';
+        multiplier = 4;
         scoringCards = getFullHouseScoringCards(cards, valueCounts);
-    } else if (maxSuitCount === 5) {
-        if (isStraight) {
-            handType = 'Straight Flush';
-        } else {
-            handType = 'Flush';
-        }
-        cards.forEach((_, index) => scoringCards.add(index));
-    } else if (isStraight) {
-        handType = 'Straight';
-        cards.forEach((_, index) => scoringCards.add(index));
     } else if (maxCount === 3) {
-        handType = 'Three of a Kind';
+        handType = 'Three of a Kind (x3)';
+        multiplier = 3;
         scoringCards = getScoringCardsForValue(cards, valueCounts, 3);
     } else if (Object.values(valueCounts).filter(count => count === 2).length === 2) {
-        handType = 'Two Pair';
+        handType = 'Two Pair (x2)';
+        multiplier = 2;
         scoringCards = getScoringCardsForValue(cards, valueCounts, 2);
     } else if (maxCount === 2) {
-        handType = 'One Pair';
+        handType = 'One Pair (x2)';
+        multiplier = 2;
         scoringCards = getScoringCardsForValue(cards, valueCounts, 2);
+    } else if (cards.length === 1) {
+        handType = 'Single Card';
     } else {
         handType = 'High Card';
     }
     
-    return { handType, scoringCards };
+    return { handType, scoringCards, multiplier };
 }
+
+
+
 
 // Helper functions for hand evaluation
 function getScoringCardsForValue(cards, valueCounts, targetCount) {
@@ -243,15 +291,15 @@ function getFullHouseScoringCards(cards, valueCounts) {
 }
 
 // Combat Effects Calculation
-function calculateCombatEffects(cards, scoringCards) {
+function calculateCombatEffects(cards, scoringCards, multiplier = 1) {
     let damage = 0;
     let shield = 0;
     let healing = 0;
     let pentacles = 0;
     
     cards.forEach((card, index) => {
-        const multiplier = scoringCards.has(index) ? 2 : 1;
-        const effectiveValue = card.value * multiplier;
+        const cardMultiplier = scoringCards.has(index) ? multiplier : 1;
+        const effectiveValue = card.value * cardMultiplier;
         
         switch (card.suit) {
             case 'Swords':
@@ -272,19 +320,25 @@ function calculateCombatEffects(cards, scoringCards) {
     return { damage, shield, healing, pentacles };
 }
 
-// UI Update Functions
 function updateHandCalculator(state) {
     const selectedCards = Array.from(state.selectedCards).map(index => state.hand[index]);
     
-    if (selectedCards.length === 5) {
-        const { scoringCards } = evaluateHand(selectedCards);
-        // Convert indices from selected cards to indices in the original hand
-        const mappedScoringCards = new Set();
-        Array.from(scoringCards).forEach(selectedIndex => {
-            mappedScoringCards.add(Array.from(state.selectedCards)[selectedIndex]);
-        });
-        const effects = calculateCombatEffects(selectedCards, scoringCards);
+    if (selectedCards.length > 0) {
+        // Always calculate values based on currently selected cards
+        let scoringCards = new Set();
+        let multiplier = 1;
         
+        // Only evaluate for poker hands if there are exactly 5 cards
+        if (selectedCards.length > 0) {
+            const handEvaluation = evaluateHand(selectedCards);
+            scoringCards = handEvaluation.scoringCards;
+            multiplier = handEvaluation.multiplier;
+        }
+        
+        // Calculate effects based on current selection
+        const effects = calculateCombatEffects(selectedCards, scoringCards, multiplier);
+        
+        // Update the calculator display
         document.getElementById('calc-swords').textContent = effects.damage;
         document.getElementById('calc-wands').textContent = effects.shield;
         document.getElementById('calc-cups').textContent = effects.healing;
@@ -320,8 +374,7 @@ function createImpactEffect(x, y) {
     setTimeout(() => impact.remove(), ANIMATION_CONFIG.IMPACT_DURATION);
 }
 
-// Card Animation (keeping this as one function to ensure smooth animation)
-async function animateCard(card, cardElement, targetElement, effect, scoringCards, index) {
+async function animateCard(card, cardElement, targetElement, effect, scoringCards, index, multiplier = 1) {
     const start = getElementCenter(cardElement);
     const end = getElementCenter(targetElement);
     
@@ -336,8 +389,8 @@ async function animateCard(card, cardElement, targetElement, effect, scoringCard
     
     await new Promise(resolve => requestAnimationFrame(resolve));
     
-    const multiplier = scoringCards.has(index) ? 2 : 1;
-    const effectiveValue = card.value * multiplier;
+    const cardMultiplier = scoringCards.has(index) ? multiplier : 1;
+    const effectiveValue = card.value * cardMultiplier;
     
     clone.style.left = `${end.x - 50}px`;
     clone.style.top = `${end.y - 75}px`;
@@ -376,9 +429,11 @@ async function applyGlowEffect(element, className, newValue) {
     element.classList.remove(className);
 }
 
-// Main Animation Orchestration (keeping these larger to maintain timing synchronization)
 async function animateCardEffects(state, selectedHand, scoringCards) {
-    const effects = calculateCombatEffects(selectedHand, scoringCards);
+    // Get the multiplier from evaluateHand
+    const { multiplier } = evaluateHand(selectedHand);
+    
+    const effects = calculateCombatEffects(selectedHand, scoringCards, multiplier);
     
     const runningEffects = {
         health: state.player.health,
@@ -400,13 +455,13 @@ async function animateCardEffects(state, selectedHand, scoringCards) {
         const targetElement = getTargetElement(card.suit);
         
         if (cardElement && targetElement) {
-            updateRunningEffects(runningEffects, card, scoringCards.has(i));
+            updateRunningEffects(runningEffects, card, scoringCards.has(i), multiplier);
             
             if (i > 0) {
                 await new Promise(resolve => setTimeout(resolve, ANIMATION_CONFIG.ANIMATION_STAGGER));
             }
             
-            const animationPromise = animateCard(card, cardElement, targetElement, runningEffects, scoringCards, i);
+            const animationPromise = animateCard(card, cardElement, targetElement, runningEffects, scoringCards, i, multiplier);
             animationPromises.push(animationPromise);
         }  
     }
@@ -428,9 +483,9 @@ function getTargetElement(suit) {
     }
 }
 
-function updateRunningEffects(runningEffects, card, isScoring) {
-    const multiplier = isScoring ? 2 : 1;
-    const effectiveValue = card.value * multiplier;
+function updateRunningEffects(runningEffects, card, isScoring, multiplier = 1) {
+    const cardMultiplier = isScoring ? multiplier : 1;
+    const effectiveValue = card.value * cardMultiplier;
     
     switch (card.suit) {
         case 'Wands':
@@ -527,7 +582,7 @@ async function playHand(state) {
         const selectedCards = Array.from(state.selectedCards).map(index => state.hand[index]);
         
         // Evaluate the hand
-        const { handType, scoringCards } = evaluateHand(selectedCards);
+        const { handType, scoringCards, multiplier } = evaluateHand(selectedCards);
         
         // Animate card effects
         const effects = await animateCardEffects(state, selectedCards, scoringCards);
@@ -678,14 +733,12 @@ function updateHandValueUI(state) {
     
     if (state.selectedCards.size > 0 && state.selectedCards.size <= 5) {
         const selectedCards = Array.from(state.selectedCards).map(index => state.hand[index]);
-        if (selectedCards.length === 5) {
+        if (selectedCards.length > 0) {
             const { handType } = evaluateHand(selectedCards);
             handValueElement.textContent = `Hand: ${handType}`;
-        } else {
-            handValueElement.textContent = `Selected ${selectedCards.length} cards`;
         }
     } else {
-        handValueElement.textContent = 'Select up to 5 cards to play';
+        handValueElement.textContent = 'Select up to 5 cards to play or discard';
     }
 }
 
